@@ -341,7 +341,7 @@ else:
     
 
 # 6. Top Seller
-st.subheader("Top Sellers by Product Count")
+st.subheader("Top Sellers by Penjualan")
 
 if not top_sellers.empty:
     # Mengurutkan DataFrame berdasarkan product_count (penting untuk gradasi warna)
