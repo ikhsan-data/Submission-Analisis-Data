@@ -98,6 +98,7 @@ class DataAnalyzer:
 
         return customer_bystate_df, most_common_state
     
+        
     def create_seller_bystate_df(self):
         seller_bystate_df = self.df.groupby(by="seller_state").seller_id.nunique().reset_index()
         seller_bystate_df.rename(columns={
@@ -118,46 +119,53 @@ class DataAnalyzer:
         
 
 
+def plot_brazil_map(ax, data, title="Distribusi di Brazil", color="", figsize=(12, 12)):
+    try:
+        brazil = mpimg.imread(
+            urllib.request.urlopen(
+                'https://i.pinimg.com/originals/3a/0c/e1/3a0ce18b3c842748c255bc0aa445ad41.jpg'
+            ),
+            'jpg'
+        )
+    except urllib.error.URLError:
+        st.error("Gagal mengunduh gambar peta Brazil. Periksa koneksi internet Anda.")
+        return
+
+    ax.imshow(brazil, extent=[-73.98283055, -33.8, -33.75116944, 5.4], aspect='auto')
+    if data.empty:
+        st.warning(f"Tidak ada data untuk ditampilkan pada peta: {title}") 
+        return
+    
+    data.plot(
+        kind="scatter",
+        x="geolocation_lng",
+        y="geolocation_lat",
+        alpha=0.3,
+        s=2,  # Sedikit diperbesar
+        c=color,
+        ax=ax
+    )
+    ax.set_title(title, fontsize=16)
+    ax.axis('off')
+
 class BrazilMapPlotter:
-    def __init__(self, data, plt, mpimg, urllib, st):
-        self.data = data
+    def __init__(self, plt, mpimg, urllib, st):
         self.plt = plt
         self.mpimg = mpimg
         self.urllib = urllib
         self.st = st
-
-    def plot(self, title="Distribusi di Brazil"):
-        try:
-            # Unduh gambar peta Brazil
-            brazil = self.mpimg.imread(
-                self.urllib.request.urlopen(
-                    'https://i.pinimg.com/originals/3a/0c/e1/3a0ce18b3c842748c255bc0aa445ad41.jpg'
-                ),
-                'jpg'
-            )
-        except self.urllib.error.URLError:
-            self.st.error("Gagal mengunduh gambar peta Brazil. Periksa koneksi internet Anda.")
-            return
         
-        # Plot data pada peta
+    
+
+    def plot_customer(self, data, title="Persebaran Customer di Brazil"):
         fig, ax = self.plt.subplots(figsize=(12, 12))
-        ax = self.data.plot(
-            kind="scatter",
-            x="geolocation_lng",
-            y="geolocation_lat",
-            figsize=(10, 10),
-            alpha=0.3,
-            s=1,
-            c='blue',
-            ax=ax
-        )
-        ax.set_title(title, fontsize=16)
-        ax.axis('off')  # Hilangkan sumbu
-        self.plt.imshow(
-            brazil,
-            extent=[-73.98283055, -33.8, -33.75116944, 5.4],
-            aspect='auto'
-        )
+        plot_brazil_map(ax, data, title, 'blue', figsize=(12, 12))
+        self.plt.tight_layout()
+        self.st.pyplot(fig)
+
+    def plot_seller(self, data, title="Persebaran Penjual di Brazil"):
+        fig, ax = self.plt.subplots(figsize=(12, 12))
+        plot_brazil_map(ax, data, title, 'green', figsize=(12, 12))
         self.plt.tight_layout()
         self.st.pyplot(fig)
         
@@ -184,7 +192,7 @@ with st.sidebar:
 main_df = all_df[(all_df["order_approved_at"] >= pd.to_datetime(start_date)) & (all_df["order_approved_at"] <= pd.to_datetime(end_date))] if 'order_approved_at' in all_df else all_df
 
 function = DataAnalyzer(main_df)
-map_plotter = BrazilMapPlotter(data=main_df, plt=plt, mpimg=mpimg, urllib=urllib, st=st)
+map_plotter = BrazilMapPlotter(plt=plt, mpimg=mpimg, urllib=urllib, st=st)
 
 daily_orders_df = function.create_daily_orders_df()
 
@@ -199,10 +207,9 @@ seller_bystate_df, most_common_state = function.create_seller_bystate_df()
 
 order_item_df = main_df[['order_id', 'order_item_id', 'product_id', 'seller_id']] if 'seller_id' in main_df and 'product_id' in main_df else pd.DataFrame()
 seller_df = main_df[['seller_id', 'seller_zip_code_prefix', 'seller_state', 'seller_city']].drop_duplicates(subset='seller_id') if 'seller_id' in main_df else pd.DataFrame()
-if not seller_df.empty:
-    seller_df['seller_name'] = 'Seller ' + seller_df['seller_id'].astype(str).str[:5]
-top_sellers = function.create_seller_product_count_df(order_item_df).head(5)
-map_plotter = BrazilMapPlotter(data=main_df, plt=plt, mpimg=mpimg, urllib=urllib, st=st)
+top_sellers = function.create_seller_product_count_df(order_item_df).head(10)
+if not top_sellers.empty and not seller_df.empty:
+    top_sellers = pd.merge(top_sellers, seller_df, on='seller_id', how='left')
 
 st.header("Dashboard E-Commerce :convenience_store:")
 
@@ -288,54 +295,27 @@ else:
 
 # 4. Persebaran Pelanggan
 st.subheader("Persebaran Pelanggan Berdasarkan Lokasi")
-if 'customer_state' in all_df.columns:
+if 'customer_state' in all_df.columns and not geolocation_customer.empty: # Memastikan kolom dan dataframe ada
     geolocation_customer['geolocation_zip_code_prefix'] = geolocation_customer['geolocation_zip_code_prefix'].astype(str)
-    main_df['customer_state'] = main_df['customer_state'].astype(str)  
-    print("Shape geolocation sebelum merge:", geolocation_customer.shape)
-    print("Shape all_df sebelum merge:", main_df[['customer_id', 'customer_state']].shape)
-    customer_geolocation = geolocation_customer.merge(
-        main_df[['customer_id', 'customer_state']],
-        left_on='geolocation_zip_code_prefix',
-        right_on='customer_state',
-        how='inner'
-    )
-    print("Shape customer_geolocation setelah merge:", customer_geolocation.shape)
-    print(customer_geolocation.head()) # Tampilkan beberapa baris pertama
-    # Menampilkan grafik distribusi berdasarkan state
-    customer_state_counts = main_df['customer_state'].value_counts()
-    fig, ax = plt.subplots(figsize=(10, 6))
-    sns.countplot(x='customer_state', data=main_df, order=customer_state_counts.index, ax=ax)
-    ax.tick_params(axis='x', rotation=45)
-    st.pyplot(fig)
-    
+    main_df['customer_zip_code_prefix'] = main_df['customer_zip_code_prefix'].astype(str)
+
+    customer_geolocation = geolocation_customer.drop_duplicates(subset='customer_id') # Menghapus duplikat customer_id
+
     # Menampilkan peta persebaran pelanggan
-    map_plotter = BrazilMapPlotter(data=customer_geolocation, plt=plt, mpimg=mpimg, urllib=urllib, st=st)
-    map_plotter.plot(title="Persebaran Pelanggan di Brazil")
+    map_plotter.plot_customer(customer_geolocation, title="Persebaran Pelanggan di Brazil")
 else:
     st.write("Customer state information is not available.")
 
 # 5. Persebaran Penjual  
 st.subheader("Persebaran Penjual Berdasarkan Lokasi")
-if 'seller_state' in all_df.columns:
+if 'seller_state' in all_df.columns and not geolocation_seller.empty: # Memastikan kolom dan dataframe ada
     geolocation_seller['geolocation_zip_code_prefix'] = geolocation_seller['geolocation_zip_code_prefix'].astype(str)
-    main_df['seller_state'] = main_df['seller_state'].astype(str)  
+    main_df['seller_zip_code_prefix'] = main_df['seller_zip_code_prefix'].astype(str)
 
-    seller_geolocation = geolocation_seller.merge(
-        main_df[['seller_id', 'seller_state']],
-        left_on='geolocation_zip_code_prefix',
-        right_on='seller_state',
-        how='inner'
-    )
-    # Menampilkan grafik distribusi berdasarkan state
-    seller_state_counts = main_df['seller_state'].value_counts()
-    fig, ax = plt.subplots(figsize=(10, 6))
-    sns.countplot(x='seller_state', data=main_df, order=seller_state_counts.index, ax=ax)
-    ax.tick_params(axis='x', rotation=45)
-    st.pyplot(fig)
-    
-    # Menampilkan peta persebaran pelanggan
-    map_plotter = BrazilMapPlotter(data=seller_geolocation, plt=plt, mpimg=mpimg, urllib=urllib, st=st)
-    map_plotter.plot(title="Persebaran Penjual di Brazil")
+    seller_geolocation = geolocation_seller.drop_duplicates(subset='seller_id')  # Menghapus duplikat seller_id
+
+    # Menampilkan peta persebaran penjual 
+    map_plotter.plot_seller(seller_geolocation, title="Persebaran Penjual di Brazil")
 else:
     st.write("Seller state information is not available.")
     
@@ -344,28 +324,21 @@ else:
 st.subheader("Top Sellers by Penjualan")
 
 if not top_sellers.empty:
-    # Mengurutkan DataFrame berdasarkan product_count (penting untuk gradasi warna)
+    # Mengurutkan DataFrame berdasarkan product_count
     top_sellers = top_sellers.sort_values('product_count', ascending=False)
 
     fig, ax = plt.subplots(figsize=(12, 6))
 
     # Membuat gradasi warna
     n_colors = len(top_sellers)
-    colors = sns.color_palette("Greens", n_colors)  # Menggunakan palet warna "Greens"
-    
-    sns.barplot(x="product_count", y="seller_id", data=top_sellers, palette=colors, ax=ax, orient='h') # Menggunakan palette
+    colors = sns.color_palette("Greens", n_colors)
+
+    ax = sns.barplot(x="product_count", y="seller_id", hue="product_count", data=top_sellers, palette=colors, ax=ax, orient='h')
 
     ax.set_xlabel("Jumlah Produk")
     ax.set_ylabel("ID Penjual")
     ax.set_title("Top Penjual Berdasarkan Jumlah Produk")
 
-    # Menambahkan angka di setiap bar (opsional, tapi bagus untuk visualisasi)
-    for p in ax.patches:
-        width = p.get_width()
-        ax.text(width + 10,  # x-position
-                p.get_y() + p.get_height() / 2,  # y-position
-                f'{int(width)}',  # teks
-                va='center') # perataan vertikal
 
     plt.tight_layout()
     st.pyplot(fig)
