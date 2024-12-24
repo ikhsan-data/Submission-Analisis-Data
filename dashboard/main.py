@@ -176,7 +176,7 @@ with st.sidebar:
     st.title("Ikhsan Aditya N. Q.")
 
     # Logo Image
-    st.image("gcl.png")
+    st.image("images/gcl.png")
 
     # Date Range
     start_date, end_date = st.date_input(
